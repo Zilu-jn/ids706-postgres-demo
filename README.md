@@ -8,7 +8,7 @@ and save their work.
 ## Quiz site
 
 - Local development: `http://localhost:8501`
-- Public deployment: **to be added after deployment**
+- Public deployment: https://bakery-sql-quiz.streamlit.app
 
 ## Quiz topics
 
