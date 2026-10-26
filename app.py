@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import json
 
 import pandas as pd
 import streamlit as st
@@ -11,6 +12,7 @@ from supabase import Client, create_client
 from supabase.client import ClientOptions
 
 from database import QueryValidationError, execute_read_only_query
+from rag import build_knowledge_collection, generate_sql, retrieve_context
 
 # Streamlit reruns this file after source changes. ``override=True`` ensures a
 # newly rotated local database role is picked up without exposing its value.
@@ -31,6 +33,14 @@ def get_setting(name: str) -> str:
 SUPABASE_URL = get_setting("SUPABASE_URL")
 SUPABASE_KEY = get_setting("SUPABASE_PUBLISHABLE_KEY")
 DATABASE_URL = get_setting("DATABASE_URL")
+OPENAI_API_KEY = get_setting("OPENAI_API_KEY")
+OPENAI_MODEL = get_setting("OPENAI_MODEL") or "gpt-5.5"
+
+
+@st.cache_resource
+def get_knowledge_collection(questions_json: str):
+    """Build the in-memory Chroma vector database once per app process."""
+    return build_knowledge_collection(json.loads(questions_json))
 
 
 def build_supabase_client() -> Client:
@@ -80,6 +90,7 @@ missing_settings = [
         "SUPABASE_URL": SUPABASE_URL,
         "SUPABASE_PUBLISHABLE_KEY": SUPABASE_KEY,
         "DATABASE_URL": DATABASE_URL,
+        "OPENAI_API_KEY": OPENAI_API_KEY,
     }.items()
     if not value
 ]
@@ -175,6 +186,49 @@ metric_one, metric_two, metric_three = st.columns(3)
 metric_one.metric("Questions", len(questions))
 metric_two.metric("Total points", total_points)
 metric_three.metric("Saved answers", len(saved_answers))
+
+st.divider()
+st.subheader("Generate SQL with RAG")
+st.caption(
+    "Enter a natural-language quiz question. The app retrieves relevant knowledge "
+    "from ChromaDB, then asks the AI model to generate PostgreSQL."
+)
+rag_question = st.text_area(
+    "Natural-language question",
+    key="rag_question",
+    height=100,
+    placeholder="For example: Which product categories generated the most revenue?",
+)
+
+if st.button("Generate SQL", type="primary"):
+    if not rag_question.strip():
+        st.warning("Enter a question before generating SQL.")
+    else:
+        try:
+            knowledge_collection = get_knowledge_collection(
+                json.dumps(questions, sort_keys=True)
+            )
+            retrieved_context = retrieve_context(
+                knowledge_collection, rag_question.strip()
+            )
+            generated_sql = generate_sql(
+                OPENAI_API_KEY,
+                OPENAI_MODEL,
+                rag_question.strip(),
+                retrieved_context,
+            )
+            st.session_state.rag_generated_sql = generated_sql
+            st.session_state.rag_context = retrieved_context
+        except Exception as error:
+            st.error(f"Could not generate SQL: {error}")
+
+if st.session_state.get("rag_generated_sql"):
+    st.markdown("**AI-generated SQL**")
+    st.code(st.session_state.rag_generated_sql, language="sql")
+    with st.expander("Retrieved ChromaDB context"):
+        for context in st.session_state.rag_context:
+            st.markdown(f"**{context.title}**")
+            st.text(context.text)
 
 st.divider()
 st.markdown(
