@@ -113,8 +113,10 @@ and select **Save answer** if you want to keep the response under your account.
 
 ## RAG demonstration
 
-A screenshot of a natural-language question and its generated SQL will be added
-here after the deployed application is configured with its server-side API key.
+The deployed application accepts a natural-language quiz question, generates
+PostgreSQL, and displays the matching context retrieved from ChromaDB.
+
+![RAG SQL generation demonstration](docs/rag-sql-demo.png)
 
 ## Tests and CI
 
